@@ -6,15 +6,15 @@ from torchvision import transforms as T
 from torch.utils.data import DataLoader
 import numpy as np
 import clip
+from transformer_lens import HookedTransformer
 
 from limber.use_limber import simple_load_model
-from transformer_lens import HookedTransformer
-from load_mscoco import COCOImageDataset
 
+from load_mscoco import COCOImageDataset
 from limber_lens import ablate_img_block_hook, ablate_text_block_hook
 
 
-batch_size = 64
+batch_size = 256
 torch.set_grad_enabled(False)
 config_path = 'limber/configs/clip_linear.yml'
 model = simple_load_model(config_path, limber_proj_path='limber/limber_weights/clip_linear/proj.ckpt')
@@ -36,7 +36,7 @@ for i in range(ablate_layers):
     ablate_hooks.append((f'blocks.{i}.hook_attn_out', ablate_img_block_hook))
     ablate_hooks.append((f'blocks.{i}.hook_mlp_out', ablate_img_block_hook))
 
-coco_ds = COCOImageDataset(f'/home/ajl_onion123/mscoco2017_val', transform=model.transforms)
+coco_ds = COCOImageDataset(f'/media/andrelongon/DATA/mscoco2017_val', transform=model.transforms)
 print("Loaded COCO")
 dataloader = DataLoader(coco_ds, batch_size=batch_size, shuffle=False, drop_last=False)
 
