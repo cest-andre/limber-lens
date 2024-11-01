@@ -12,15 +12,34 @@ from limber.use_limber import simple_load_model
 from transformer_lens import HookedTransformer
 
 
+image_seq_len = 144
+
 def ablate_img_block_hook(value, hook):
-    image_seq_len = 144
     value[:, :image_seq_len, :] = 0.
     return value
 
 
 def ablate_text_block_hook(value, hook):
-    image_seq_len = 144
     value[:, image_seq_len:, :] = 0.
+    return value
+
+
+def ablate_img2txt_attn(value, hook):
+    value[:, :, image_seq_len:, :image_seq_len] = -float('inf')
+    return value
+
+
+def overwrite_rand(value, hook):
+    image_seq_len = 144
+    mean_image_norm = 168.125  #  mean projector out norm across MSCOCO 2017 val for Limber+CLIP
+    rand_embeds = torch.normal(0, 1, size=value[:, :image_seq_len, :].shape).cuda()
+    rand_norms = torch.mean(torch.linalg.vector_norm(rand_embeds, dim=-1), dim=1)
+
+    norm_ratios = mean_image_norm / (rand_norms + 1e-10)
+    rand_embeds = torch.mul(rand_embeds, norm_ratios[:, None, None].expand(-1, rand_embeds.shape[1], rand_embeds.shape[2]))
+
+    value[:, :image_seq_len, :] = mean_image_norm
+
     return value
 
 

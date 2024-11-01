@@ -61,7 +61,7 @@ class COCOImageDataset(Dataset):
          
     def __getitem__(self, idx: int):
         img_data = self.img_list[idx]
-        img = Image.open(f"{self.data_dir}/val2017/{img_data['file_name']}")
+        img = Image.open(f"{self.data_dir}/val2017/spoof_class/{img_data['file_name']}")
         capt = img_data['caption']
 
         if self.transform:
