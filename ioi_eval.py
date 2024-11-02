@@ -12,42 +12,33 @@ from EasyTransformer.easy_transformer.ioi_dataset import IOIDataset
 from limber.use_limber import simple_load_model
 
 from load_mscoco import COCOImageDataset
-from limber_lens import ablate_img_block_hook, ablate_text_block_hook, overwrite_rand
+from limber_lens import ablate_img_block_hook, ablate_text_block_hook, ablate_txt2img_attn, overwrite_rand
 
 
 batch_size = 256
 total_size = batch_size * 16
 torch.set_grad_enabled(False)
+torch.cuda.set_device(1)
 config_path = 'limber/configs/clip_linear.yml'
 model = simple_load_model(config_path, limber_proj_path='limber/limber_weights/clip_linear/proj.ckpt')
 model = model.cuda().half()
 print("Loaded model")
 
-# ioi_ds = IOIDataset('mixed', N=total_size, tokenizer=model.tokenizer)
-# for prompt in ioi_ds.ioi_prompts:
-#     if type(prompt) != dict:
-#         print(prompt)
-# exit()
-
-# text_embeds = model.tokenizer.encode('A picture of', return_tensors="pt").cuda()
-# text_embeds = model.word_embedding(text_embeds)
-# text_norm = torch.mean(torch.linalg.vector_norm(text_embeds, dim=-1))
-# print(text_norm.item())
-# print(torch.mean(torch.linalg.vector_norm(model.word_embedding.state_dict()['weight'], dim=-1)) / 4096)
-
-hooked_model = HookedTransformer.from_pretrained("gpt-j-6B", default_prepend_bos=False, tokenizer=model.tokenizer, device='cuda', dtype='float16')
+hooked_model = HookedTransformer.from_pretrained("gpt-j-6B", default_prepend_bos=False, tokenizer=model.tokenizer, device='cuda:1', dtype='float16')
 ablate_layers = 28
 ablate_hooks = []
 for i in range(ablate_layers):
     ablate_hooks.append((f'blocks.{i}.hook_attn_out', ablate_img_block_hook))
     ablate_hooks.append((f'blocks.{i}.hook_mlp_out', ablate_img_block_hook))
+    # ablate_hooks.append((f'blocks.{i}.hook_attn_out', ablate_text_block_hook))
+    # ablate_hooks.append((f'blocks.{i}.hook_mlp_out', ablate_text_block_hook))
+    # ablate_hooks.append((f'blocks.{i}.attn.hook_attn_scores', ablate_txt2img_attn))
     # ablate_hooks.append((f'blocks.{i}.hook_resid_pre', overwrite_rand))
 
 ioi_ds = IOIDataset('mixed', N=total_size, tokenizer=model.tokenizer)
 print("Loaded IOI")
-# dataloader = DataLoader(ioi_ds, batch_size=batch_size, shuffle=False, drop_last=False)
 
-coco_ds = COCOImageDataset(f'/media/andrelongon/DATA/mscoco2017_val/spoof_class', transform=model.transforms)
+coco_ds = COCOImageDataset(f'/media/andrelongon/DATA/mscoco2017_val', transform=model.transforms)
 print("Loaded COCO")
 dataloader = DataLoader(coco_ds, batch_size=batch_size, shuffle=True, drop_last=True)
 data_iter = iter(dataloader)
@@ -68,14 +59,14 @@ for i in range(0, total_size, batch_size):
     img_embeds = model.image_prefix(imgs)
     img_norms = torch.mean(torch.linalg.vector_norm(img_embeds, dim=-1), dim=1)
     norm_ratios = text_norms / (img_norms + 1e-10)
-    # img_embeds = torch.mul(img_embeds, norm_ratios[:, None, None].expand(-1, img_embeds.shape[1], img_embeds.shape[2]))
+    img_embeds = torch.mul(img_embeds, norm_ratios[:, None, None].expand(-1, img_embeds.shape[1], img_embeds.shape[2]))
 
-    rand_embeds = torch.normal(0, 1, size=img_embeds.shape).cuda()
-    rand_norms = torch.mean(torch.linalg.vector_norm(rand_embeds, dim=-1), dim=1)
-    norm_ratios = text_norms / (rand_norms + 1e-10)
-    rand_embeds = torch.mul(rand_embeds, norm_ratios[:, None, None].expand(-1, img_embeds.shape[1], img_embeds.shape[2]))
+    # rand_embeds = torch.normal(0, 1, size=img_embeds.shape).cuda()
+    # rand_norms = torch.mean(torch.linalg.vector_norm(rand_embeds, dim=-1), dim=1)
+    # norm_ratios = text_norms / (rand_norms + 1e-10)
+    # rand_embeds = torch.mul(rand_embeds, norm_ratios[:, None, None].expand(-1, img_embeds.shape[1], img_embeds.shape[2]))
 
-    embeds = torch.cat([rand_embeds, text_embeds], dim=1)
+    embeds = torch.cat([img_embeds, text_embeds], dim=1)
     logits = hooked_model.run_with_hooks(embeds, prepend_bos=False, start_at_layer=0, stop_at_layer=None, return_type='logits', fwd_hooks=ablate_hooks)
 
     IO_logits = logits[

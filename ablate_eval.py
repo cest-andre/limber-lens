@@ -11,7 +11,7 @@ from transformer_lens import HookedTransformer
 from limber.use_limber import simple_load_model
 
 from load_mscoco import COCOImageDataset
-from limber_lens import ablate_img_block_hook, ablate_text_block_hook, ablate_img2txt_attn
+from limber_lens import ablate_img_block_hook, ablate_text_block_hook, ablate_txt2img_attn
 
 
 batch_size = 128
@@ -54,7 +54,6 @@ for i, (imgs, gt_capts) in enumerate(dataloader):
     img_embeds = model.image_prefix(imgs)
     img_norms = torch.mean(torch.linalg.vector_norm(img_embeds, dim=-1), dim=1)
     norm_ratio = text_norm / (img_norms + 1e-10)
-    norm_ratio = 1 / norm_ratio
     img_embeds = torch.mul(img_embeds, norm_ratio[:, None, None].expand(-1, img_embeds.shape[1], img_embeds.shape[2]))
     embeds = torch.cat([img_embeds, text_embeds.expand(imgs.shape[0], -1, -1)], dim=1)
     all_embeds.append(embeds.cpu())
@@ -71,7 +70,7 @@ ablate_hooks = []
 for i in range(num_layers):
     ablate_hooks.append((f'blocks.{i}.hook_attn_out', ablate_img_block_hook))
     ablate_hooks.append((f'blocks.{i}.hook_mlp_out', ablate_img_block_hook))
-    ablate_hooks.append((f'blocks.{i}.attn.hook_attn_scores', ablate_img2txt_attn))
+    ablate_hooks.append((f'blocks.{i}.attn.hook_attn_scores', ablate_txt2img_attn))
     all_pred_capts = []
     for embeds in all_embeds:
         embeds = embeds.cuda()
@@ -127,5 +126,4 @@ for i in range(num_layers):
     print(f"Mean Pred Score:  {mean_pred}\nPred / GT:  {mean_pred / mean_gt}")
 
     # np.save(f'/media/andrelongon/DATA/limber_lens_results/clipscores/first{i+1}_img_out_img2txt_attn_ablate_scores.npy', all_pred_scores.numpy())
-    np.save(f'/home/ajl_onion123/results/clipscores/reduced_norm_first{ablate_layers}_img_ablate_scores.npy', all_pred_scores.numpy())
-    # np.save('/home/ajl_onion123/results/clipscores/gt_scores.npy', all_gt_scores.numpy())
+    np.save(f'/media/andrelongon/DATA/limber_lens_results/clipscores/reduced_norm_first{i+1}_img_out_img2txt_attn_ablate_scores.npy', all_pred_scores.numpy())
